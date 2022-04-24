@@ -1,5 +1,6 @@
 mod chip8;
 mod display;
+mod memory;
 
 use clap::{arg, command};
 use iced::{Application, Settings};
@@ -42,6 +43,14 @@ fn init_logger(is_verbose: bool) {
         .level(LevelFilter::Error)
         .level_for(
             "chip8_rust::chip8",
+            if is_verbose {
+                LevelFilter::Trace
+            } else {
+                LevelFilter::Error
+            },
+        )
+        .level_for(
+            "chip8_rust::memory",
             if is_verbose {
                 LevelFilter::Trace
             } else {

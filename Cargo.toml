@@ -13,3 +13,7 @@ fern = "0.6.1"
 iced = { version = "0.3.0", features = ["async-std", "canvas"] }
 iced_native = "0.4.0"
 log = "0.4.16"
+rand = "0.8.5"
+
+[dev-dependencies]
+proptest = "1.0.0"

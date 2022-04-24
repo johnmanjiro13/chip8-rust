@@ -19,6 +19,29 @@ impl Display {
         }
     }
 
+    pub fn clear(&mut self) {
+        self.pixels = [[false; DISPLAY_WIDTH]; DISPLAY_HEIGHT];
+    }
+
+    pub fn draw_sprite(&mut self, x: u8, y: u8, sprite: &[u8]) -> bool {
+        let mut collision = false;
+
+        for (offset_y, line) in sprite.iter().enumerate() {
+            let wrapped_y = (y as usize + offset_y) % DISPLAY_HEIGHT;
+            for offset_x in 0..8 {
+                let wrapped_x = (x as usize + offset_x) % DISPLAY_WIDTH;
+                let old = self.pixels[wrapped_y][wrapped_x];
+                let new = (line >> (7 - offset_x)) % 2 == 1;
+                self.pixels[wrapped_y][wrapped_x] = old ^ new;
+                if old && new {
+                    collision = true
+                }
+            }
+        }
+
+        collision
+    }
+
     pub fn view(&mut self) -> Element<()> {
         Canvas::new(self)
             .width(Length::Fill)
