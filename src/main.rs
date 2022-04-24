@@ -1,5 +1,6 @@
 mod chip8;
 mod display;
+mod keyboard;
 mod memory;
 
 use clap::{arg, command};

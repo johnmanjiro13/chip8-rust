@@ -1,10 +1,11 @@
 use iced::time::every;
 use iced::{executor, Application, Clipboard, Command, Element, Subscription};
-use log::trace;
+use log::{debug, trace};
 use rand::Rng;
 use std::time::{Duration, Instant};
 
 use crate::display::Display;
+use crate::keyboard::{Keyboard, KeyboardMessage};
 use crate::memory::Memory;
 
 struct Registers {
@@ -38,12 +39,16 @@ pub struct Chip8 {
     display: Display,
     memory: Memory,
     timers: Timers,
+    keyboard: Keyboard,
+    waiting_key_for: Option<u8>,
 }
 
 #[derive(Debug)]
 pub enum Message {
     Display,
     Clock(Instant),
+    Tick(Instant),
+    KeyBoard(KeyboardMessage),
 }
 
 pub struct Flags {
@@ -62,6 +67,8 @@ impl Application for Chip8 {
                 display: Display::new(),
                 memory: Memory::with_rom(flags.rom),
                 timers: Timers::default(),
+                keyboard: Keyboard::new(),
+                waiting_key_for: None,
             },
             Command::none(),
         )
@@ -77,12 +84,30 @@ impl Application for Chip8 {
         _clipboard: &mut Clipboard,
     ) -> Command<Self::Message> {
         match message {
-            Message::Clock(_instance) => {
-                let b1 = self.memory.load(self.registers.pc);
-                let b2 = self.memory.load(self.registers.pc + 1);
-                self.execute(b1 >> 4, b1 & 0x0F, b2 >> 4, b2 & 0x0F);
-            }
             Message::Display => {}
+            Message::Clock(_instance) => {
+                if self.waiting_key_for.is_none() {
+                    let b1 = self.memory.load(self.registers.pc);
+                    let b2 = self.memory.load(self.registers.pc + 1);
+                    self.execute(b1 >> 4, b1 & 0x0F, b2 >> 4, b2 & 0x0F);
+                }
+            }
+            Message::Tick(_instance) => {
+                if self.timers.dt > 0 {
+                    self.timers.dt -= 1;
+                }
+                // TODO: handler buzzer
+                if self.timers.st > 0 {
+                    self.timers.st -= 1;
+                }
+            }
+            Message::KeyBoard(message) => {
+                if let (KeyboardMessage::Press(value), Some(x)) = (message, self.waiting_key_for) {
+                    self.registers.v[x as usize] = value;
+                    self.waiting_key_for = None;
+                }
+                self.keyboard.update(message);
+            }
         }
         Command::none()
     }
@@ -92,8 +117,10 @@ impl Application for Chip8 {
     }
 
     fn subscription(&self) -> Subscription<Self::Message> {
+        let keyboard = self.keyboard.subscription().map(Message::KeyBoard);
         let clock = every(Duration::from_millis(1000 / 60)).map(Message::Clock);
-        Subscription::batch([clock])
+        let timer = every(Duration::from_millis(1000 / 60)).map(Message::Tick);
+        Subscription::batch([keyboard, clock, timer])
     }
 }
 
@@ -113,8 +140,8 @@ impl Chip8 {
             }
             (0x0, 0x0, 0xE, 0xE) => {
                 trace!("{:04X} RET", self.registers.pc);
-                self.registers.pc = self.registers.stack[self.registers.sp as usize];
                 self.registers.sp -= 1;
+                self.registers.pc = self.registers.stack[self.registers.sp as usize];
                 self.registers.pc += 2;
             }
             (0x1, n1, n2, n3) => {
@@ -125,8 +152,8 @@ impl Chip8 {
             (0x2, n1, n2, n3) => {
                 let addr = addr_of(n1, n2, n3);
                 trace!("{:04X} CALL {:04X}", self.registers.pc, addr);
-                self.registers.sp += 1;
                 self.registers.stack[self.registers.sp as usize] = self.registers.pc;
+                self.registers.sp += 1;
                 self.registers.pc = addr;
             }
             (0x3, x, k1, k2) => {
@@ -164,7 +191,8 @@ impl Chip8 {
             (0x7, x, k1, k2) => {
                 let value = value_of(k1, k2);
                 trace!("{:04X} ADD V{:X}, {:02X}", self.registers.pc, x, value);
-                self.registers.v[x as usize] += value;
+                let old = self.registers.v[x as usize];
+                self.registers.v[x as usize] = old.wrapping_add(value);
                 self.registers.pc += 2;
             }
             (0x8, x, y, 0x0) => {
@@ -277,13 +305,21 @@ impl Chip8 {
             }
             (0xE, x, 0x9, 0xE) => {
                 trace!("{:04X} SKP V{:X}", self.registers.pc, x);
-                // TODO: keyboard
-                self.registers.pc += 2;
+                let value = self.registers.v[x as usize];
+                if self.keyboard.is_pressed(value) {
+                    self.registers.pc += 4;
+                } else {
+                    self.registers.pc += 2;
+                }
             }
             (0xE, x, 0xA, 0x1) => {
                 trace!("{:04X} SKNP V{:X}", self.registers.pc, x);
-                // TODO: keyboard
-                self.registers.pc += 2;
+                let value = self.registers.v[x as usize];
+                if !self.keyboard.is_pressed(value) {
+                    self.registers.pc += 4;
+                } else {
+                    self.registers.pc += 2;
+                }
             }
             (0xF, x, 0x0, 0x7) => {
                 trace!("{:04X} LD V{:X}, DT", self.registers.pc, x);
@@ -292,7 +328,8 @@ impl Chip8 {
             }
             (0xF, x, 0x0, 0xA) => {
                 trace!("{:04X} LD V{:X}, K", self.registers.pc, x);
-                // TODO: keyboard
+                debug!("Waiting keyboard input for the register V{:X}", x);
+                self.waiting_key_for = Some(x);
                 self.registers.pc += 2;
             }
             (0xF, x, 0x1, 0x5) => {
