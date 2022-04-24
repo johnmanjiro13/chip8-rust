@@ -1,18 +1,39 @@
-use iced::{executor, Application, Clipboard, Command, Element, Settings, Text};
+use iced::time::every;
+use iced::{executor, Application, Clipboard, Command, Element, Settings, Subscription};
+use std::time::{Duration, Instant};
+
+mod display;
+
+use display::Display;
 
 fn main() {
-    Chip8::run(Settings::default()).unwrap();
+    let mut settings = Settings::default();
+    settings.window.size = (display::WIDTH as u32, display::HEIGHT as u32);
+    Chip8::run(settings).unwrap();
 }
 
-struct Chip8 {}
+struct Chip8 {
+    display: Display,
+}
+
+#[derive(Debug)]
+enum Message {
+    Display,
+    Clock(Instant),
+}
 
 impl Application for Chip8 {
     type Executor = executor::Default;
-    type Message = ();
+    type Message = Message;
     type Flags = ();
 
     fn new(_flags: ()) -> (Self, Command<Self::Message>) {
-        (Self {}, Command::none())
+        (
+            Self {
+                display: Display::new(),
+            },
+            Command::none(),
+        )
     }
 
     fn title(&self) -> String {
@@ -28,6 +49,11 @@ impl Application for Chip8 {
     }
 
     fn view(&mut self) -> Element<Self::Message> {
-        Text::new("Hello, world!").into()
+        self.display.view().map(|_| Message::Display)
+    }
+
+    fn subscription(&self) -> Subscription<Self::Message> {
+        let clock = every(Duration::from_millis(1000 / 60)).map(Message::Clock);
+        Subscription::batch([clock])
     }
 }
