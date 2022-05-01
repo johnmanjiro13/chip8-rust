@@ -4,6 +4,7 @@ use log::{debug, trace};
 use rand::Rng;
 use std::time::{Duration, Instant};
 
+use crate::buzzer::Buzzer;
 use crate::display::Display;
 use crate::keyboard::{Keyboard, KeyboardMessage};
 use crate::memory::Memory;
@@ -39,6 +40,7 @@ pub struct Chip8 {
     display: Display,
     memory: Memory,
     timers: Timers,
+    buzzer: Buzzer,
     keyboard: Keyboard,
     waiting_key_for: Option<u8>,
 }
@@ -67,6 +69,7 @@ impl Application for Chip8 {
                 display: Display::new(),
                 memory: Memory::with_rom(flags.rom),
                 timers: Timers::default(),
+                buzzer: Buzzer::new(),
                 keyboard: Keyboard::new(),
                 waiting_key_for: None,
             },
@@ -96,9 +99,12 @@ impl Application for Chip8 {
                 if self.timers.dt > 0 {
                     self.timers.dt -= 1;
                 }
-                // TODO: handler buzzer
+
                 if self.timers.st > 0 {
+                    self.buzzer.on();
                     self.timers.st -= 1;
+                } else {
+                    self.buzzer.off();
                 }
             }
             Message::KeyBoard(message) => {

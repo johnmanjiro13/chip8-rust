@@ -1,3 +1,4 @@
+mod buzzer;
 mod chip8;
 mod display;
 mod keyboard;
